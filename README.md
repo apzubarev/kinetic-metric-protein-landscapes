@@ -1,156 +1,296 @@
-ULTRAMETRICITY ANALYSIS OF PROTEIN ENERGY LANDSCAPES
-BASED ON KINETIC METRICS AND MARKOV STATE MODELS (MSM)
-Version: 1.0.1
+PROTEIN ENERGY LANDSCAPE ULTRAMETRIC ANALYSIS
+Kinetic Metric and Markov State Model Based Analysis
+Version 1.12
 Author: A. P. Zubarev
 
 OVERVIEW
-This program implements a rigorous computational method for testing the
-hypothesis of ultrametric organization in protein energy landscapes.
-The approach is grounded in the analysis of transition kinetics between
-macrostates (basins of attraction) using a kinetic metric. This metric
-is constructed via spectral decomposition of the symmetrized Kramers
-transition rate matrix and the Mahalanobis distance.
+--------
 
-The software performs a complete pipeline from molecular dynamics
-simulations to topological and spectral analysis of the conformational
-space, providing quantitative measures of hierarchical organization.
+This program analyzes protein energy landscapes and tests the hypothesis of ultrametric organization.
+It combines Langevin molecular dynamics, clustering into microstates, Markov state model construction,
+Kramers transition rates, spectral decomposition of a symmetrized rate matrix, and a kinetic metric
+based on the Mahalanobis distance.
 
-METHOD DESCRIPTION AND COMPUTATIONAL STAGES
+The program computes the fractions of ultrametric triplets of attraction basins and prints summary tables.
+The final tables are printed even when detailed output is disabled.
 
-STAGE 1: MOLECULAR DYNAMICS (MD)
-Generation of an equilibrium conformational ensemble via Langevin
-dynamics using the OpenMM package. The program supports GB99dms and
-Amber14/OBC2 implicit solvent force fields.
+MAIN FEATURES
+-------------
 
-Robust Structure Preparation:
-Before MD, the structure is automatically cleaned. Non-protein residues
-such as ligands, ions, and water molecules are removed. The longest
-polypeptide chain is selected, and missing atoms and hydrogens are
-added. This ensures compatibility with OpenMM force fields for any
-standard PDB entry.
+- Automatic preparation of protein structures from PDB or CIF files.
+- Removal of non-protein residues and selection of the longest polypeptide chain.
+- Langevin dynamics with OpenMM and implicit solvent.
+- Support for GB99dms and Amber14/OBC2 force fields.
+- In-memory trajectory buffering with rollback protection against NaN coordinates.
+- Automatic reduction of the integration step when repeated NaN errors occur.
+- k-centers clustering in RMSD space using C-alpha atoms or all protein atoms.
+- Free energy estimation for microstates from frame energies.
+- Two neighborhood graph methods: energy threshold and adaptive topology.
+- Basin identification by gradient descent on the free energy landscape.
+- Spectral filtering of noise modes using a spectral gap criterion.
+- Sensitivity analysis for plateau threshold and neighbor alpha.
+- Repeated main analysis with mean, standard deviation, and coefficient of variation.
 
-In-Memory Buffering:
-Instead of writing directly to disk, the program uses a custom
-MemoryReporter that accumulates coordinates and energies in Python
-lists. This solves the issue of corrupted frames during NaN events,
-as RAM lists can be truncated atomically. A single DCD file is written
-to disk via mdtraj only once at the very end, after successful
-simulation completion. If rollbacks exceed the limit, the integration
-step is automatically reduced and the simulation restarts.
+WORK MODES
+----------
 
-STAGE 2: MARKOV STATE MODEL (MSM) CONSTRUCTION
-Continuous conformational space is discretized by clustering trajectory
-frames into microstates using the k-centers algorithm in RMSD metric.
-The choice of atoms for RMSD calculation is determined by the geometry
-mode: C-alpha atoms only or all-atom RMSD. The selected metric is used
-uniformly for both clustering and neighbor graph construction.
+FROM_FILES_ANALYSIS
+Use this mode to skip molecular dynamics and analyze existing trajectory files.
+The program scans the working directory, loads available samples, clusters them,
+and performs the selected analytical modes.
 
-For each microstate, free energy is computed via the partition function
-over frame energies within that cluster. A neighbor graph is constructed
-using either an energy-based threshold or an Adaptive Topological Graph.
-In the adaptive method, an effective radius is computed for each cluster,
-and two clusters are neighbors if the distance between centers does not
-exceed a scaled sum of their radii.
+SENSITIVITY_ANALYSIS
+Use this mode to test the stability of results to BASIN_EQ_THRESHOLD.
+The values are taken from SENSITIVITY_RANGE.
+This mode cannot be combined with ALPHA_ANALYSIS.
 
-Based on free energies and the neighbor graph, a symmetrized transition
-rate matrix is built using the Kramers formula. Macrostates are
-identified via gradient descent on the free energy landscape. Attractors
-and plateaus are identified automatically, and each microstate is
-assigned to a basin of attraction.
+ALPHA_ANALYSIS
+Use this mode to test the stability of results to NEIGHBOR_ALPHA.
+The values are taken from ALPHA_RANGE.
+This mode cannot be combined with SENSITIVITY_ANALYSIS.
+It is meaningful only when NEIGHBOR_METHOD is adaptive_topology.
 
-STAGE 3: SPECTRAL ANALYSIS AND ULTRAMETRICITY TESTING
-For each significant connected component, spectral decomposition of the
-rate matrix is performed. Noise modes are filtered via a spectral gap
-criterion. Basin characteristic vectors are projected onto physical
-eigenmodes. The distance between basins is defined as the Mahalanobis
-distance, where slower relaxation modes contribute more to the distance.
+MAIN_ANALYSIS
+Use this mode for the main repeated analysis.
+The number of independent samples is MAIN_NUM_SAMPLES.
+For file-based analysis, the number of samples is determined by the available files.
 
-Ultrametricity is tested by enumerating all basin triplets. A triplet
-is non-trivially ultrametric if the two largest distances are
-approximately equal and the third is significantly smaller. The fraction
-of such triplets defines the degree of non-trivial ultrametricity.
+EXPECTED FILES FOR FROM_FILES_ANALYSIS
+--------------------------------------
 
-EXECUTION ARCHITECTURE AND MODES
-The program operates in one or more of the following modes:
+For sample 1:
+PDBID_trajectory_1.dcd
+PDBID_1.pdb or PDBID_1.cif
+PDBID_energies_1.txt
 
-- FROM_FILES_ANALYSIS:
-Skip MD and load existing DCD/CIF/PDB files. The MSM is built once,
-then enabled analytical modes run sequentially.
+For sample 2:
+PDBID_trajectory_2.dcd
+PDBID_2.pdb or PDBID_2.cif
+PDBID_energies_2.txt
 
-- SENSITIVITY_ANALYSIS:
-Run analysis for multiple basin equivalence threshold values to
-evaluate the stability of the landscape hierarchy.
+For a single sample without suffix:
+PDBID_trajectory.dcd
+PDBID.pdb or PDBID.cif
+PDBID_energies.txt
 
-- ALPHA_ANALYSIS:
-Run analysis for multiple topological overlap parameters to study
-the influence of graph connectivity on the results.
+Replace PDBID with the value of PDB_ID, for example 1L2Y.
+If the energy file is absent, the program can recalculate energies using OpenMM.
 
-- NULL_H1_ENERGY_SHUFFLE:
-Perform a baseline calculation, fix the topology and basins, then run
-multiple permutations of free energies to estimate statistical
-significance and separate topological effects from thermodynamic ones.
+REQUIREMENTS
+------------
 
-- MAIN_ANALYSIS:
-Execute the full cycle multiple times with different random seeds.
-Computes mean, standard deviation, and coefficient of variation to
-assess the statistical stability and reproducibility of the results.
+Operating systems:
+Windows 10 or Windows 11, Linux, macOS.
 
-TECHNICAL AND HARDWARE REQUIREMENTS
-Runtime: Windows 10/11, Linux, macOS. Python 3.10 to 3.12.
-Required packages: openmm, pdbfixer, mdtraj, numpy, scipy,
-threadpoolctl, and torch (required for CUDA JIT compilation support).
+Python:
+3.10, 3.11, or 3.12.
+
+Required packages:
+openmm
+pdbfixer
+mdtraj
+numpy
+scipy
+threadpoolctl
+torch
 
 Hardware:
-An NVIDIA GPU with CUDA support is highly recommended for the MD stage.
-CPU fallback is automatic if GPU initialization fails. MSM construction
-and spectral analysis stages run efficiently on multi-core CPUs.
+An NVIDIA GPU is recommended for molecular dynamics.
+If CUDA is unavailable, the program automatically uses CPU.
+Markov state model construction and spectral analysis run on CPU.
 
 INSTALLATION
-Install the required dependencies using pip:
+------------
+
+Create a virtual environment and install the required packages:
+
+python -m venv env
+source env/bin/activate
 pip install openmm pdbfixer mdtraj numpy scipy threadpoolctl torch
 
-USER PARAMETERS OVERVIEW
-All configurable parameters are grouped at the beginning of the source
-code and are extensively documented. They are divided into four groups:
+On Windows, use:
 
-Group 1: Execution Modes and General Settings
-Controls the activation of specific analysis protocols, CPU thread
-limits, random seed bases, and verbosity of the console output.
+python -m venv env
+env\Scripts\activate
+pip install openmm pdbfixer mdtraj numpy scipy threadpoolctl torch
 
-Group 2: Molecular Dynamics Parameters
-Defines the PDB identifier, force field selection, Langevin temperature,
-total integration steps, frame reporting intervals, and automatic
-rollback mechanisms for numerical stability.
+USAGE
+-----
 
-Group 3: MSM and Neighbor Graph Parameters
-Configures the Kramers temperature, neighborhood method selection,
-adaptive topology scaling factors, RMSD geometry modes, target number
-of clusters, and basin equivalence thresholds.
+1. Open the Python source file.
+2. Set the desired work modes at the top of the file.
+3. Set the protein identifier or provide a custom structure file.
+4. Run the script.
 
-Group 4: Spectral Analysis and Ultrametricity Parameters
-Sets the number of eigenmodes to compute, Lanczos algorithm tolerances,
-spectral gap thresholds for noise filtering, and the epsilon and delta
-tolerances for triplet classification.
+Example command:
 
-OUTPUT AND INTERPRETATION
-The program outputs detailed diagnostic tables to the console, tracking
-the formation of basins, connected components, and fragmentation
-indices. The final results include the percentage of non-trivial,
-trivial, and non-ultrametric triplets. A high percentage of
-non-trivial ultrametricity, combined with a low fragmentation index,
-indicates a strongly hierarchical, tree-like organization of the
-protein energy landscape dictated by steric constraints.
+python ultrametric_landscape_analysis.py
 
-STATISTICAL SIGNIFICANCE
-The Energy Shuffle null model provides a p-value indicating whether
-the observed ultrametricity is statistically distinguishable from
-a randomized energy distribution on the same topological graph.
-This allows researchers to conclude whether the hierarchy is driven
-primarily by the topology of allowed transitions or by the specific
-thermodynamic depths of the energy basins.
+TYPICAL SCENARIOS
+-----------------
 
-LICENSE AND CITATION
-This software is provided for academic and research purposes.
-When using this code or the underlying method in published research,
-please cite the corresponding methodological paper on the kinetic
-metric for protein energy landscapes and Markov State Models.
+Scenario A: generate new trajectories and perform main analysis
+
+FROM_FILES_ANALYSIS = False
+MAIN_ANALYSIS = True
+MAIN_NUM_SAMPLES = 5
+SENSITIVITY_ANALYSIS = False
+ALPHA_ANALYSIS = False
+
+Scenario B: analyze existing trajectories
+
+FROM_FILES_ANALYSIS = True
+MAIN_ANALYSIS = True
+SENSITIVITY_ANALYSIS = False
+ALPHA_ANALYSIS = False
+
+Scenario C: analyze sensitivity of the adaptive graph to neighbor alpha
+
+FROM_FILES_ANALYSIS = True
+NEIGHBOR_METHOD = adaptive_topology
+ALPHA_ANALYSIS = True
+ALPHA_RANGE = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+SENSITIVITY_ANALYSIS = False
+MAIN_ANALYSIS = False
+
+Note: ALPHA_RANGE must be written as a Python list in the source file.
+
+PARAMETER GROUPS
+----------------
+
+General parameters:
+MAX_CPU_THREADS limits the number of CPU threads.
+FROM_FILES_ANALYSIS enables analysis from existing files.
+SENSITIVITY_ANALYSIS enables plateau threshold sensitivity analysis.
+SENSITIVITY_RANGE gives the list of BASIN_EQ_THRESHOLD values.
+ALPHA_ANALYSIS enables neighbor alpha sensitivity analysis.
+ALPHA_RANGE gives the list of NEIGHBOR_ALPHA values.
+MAIN_ANALYSIS enables repeated main analysis.
+MAIN_NUM_SAMPLES sets the number of independent samples.
+NULL_SEED_BASE sets the base seed for reproducible replicas.
+USE_GPU enables GPU molecular dynamics when available.
+VERBOSE controls detailed console output.
+N_COMP_CON sets how many large connected components are shown in diagnostic tables.
+
+Molecular dynamics parameters:
+PDB_ID is the PDB identifier for downloading the starting structure.
+STARTING_STRUCTURE_FILE is an optional local PDB or CIF file.
+ADD_HYDROGENS_TO_CUSTOM_START controls adding hydrogens to a custom structure.
+USE_GB99DMS selects GB99dms when True, otherwise Amber14/OBC2.
+TEMPERATURE_K sets the simulation temperature.
+MD_STEPS sets the total number of integration steps.
+MD_REPORT_INTERVAL sets how often frames and energies are saved.
+MINIMIZE_STARTING_STRUCTURE enables energy minimization before dynamics.
+MD_SEED sets the random seed for a single simulation.
+MD_TIME_STEP_FS sets the initial integration step in femtoseconds.
+MD_ROLLBACK_STEPS sets the chunk size used for NaN rollback.
+MD_MAX_ROLLBACKS sets the maximum consecutive rollbacks before reducing the step.
+MD_TIME_STEP_REDUCTION_FACTOR sets the step reduction factor.
+MD_MIN_TIME_STEP_FS sets the minimum allowed integration step.
+
+Markov state model parameters:
+KRAMERS_TEMPERATURE sets the temperature used in Kramers rates.
+NEIGHBOR_METHOD selects energy or adaptive_topology neighborhood.
+ETA_NEIGHBOR_MODE selects manual or automatic eta for energy neighborhood.
+ETA_NEIGHBOR sets the manual eta value.
+NEIGHBOR_RADIUS_PERCENTILE sets the percentile used for cluster effective radius.
+NEIGHBOR_ALPHA sets the scaling factor for the adaptive topology neighborhood.
+GEOMETRY_RMSD_MODE selects ca for C-alpha RMSD or all for all-atom RMSD.
+N_CLUSTERS sets the target number of clusters.
+MIN_CLUSTER_SIZE sets the minimum number of frames per cluster.
+BASIN_EQ_THRESHOLD sets the energy equivalence threshold for plateaus.
+MIN_BASIN_SIZE sets the minimum number of microstates per basin.
+MIN_BASINS_PER_COMPONENT sets the minimum number of basins per significant component.
+
+Spectral analysis parameters:
+NUM_EIGENMODES sets the maximum number of requested eigenmodes.
+EIGS_SIGMA sets the shift-invert sigma for sparse diagonalization.
+EIGS_TOL sets the convergence tolerance.
+EIGS_DENSE_THRESHOLD sets the matrix size threshold for dense diagonalization.
+SPECTRAL_GAP_THRESHOLD sets the gap ratio used to filter noise modes.
+ULTRAMETRIC_EPSILON sets the tolerance for equality of the two largest distances.
+ULTRAMETRIC_DELTA sets the minimum separation of the smaller distance.
+
+COMPUTATION PIPELINE
+--------------------
+
+1. Structure preparation.
+The program downloads or loads a structure, removes non-protein residues,
+selects the longest chain, adds missing atoms and hydrogens, and saves a cleaned topology.
+
+2. Molecular dynamics.
+Langevin dynamics is run with OpenMM. Coordinates and energies are stored in memory.
+If NaN errors occur, the program rolls back to the last stable state.
+If rollbacks are too frequent, the time step is reduced and the simulation restarts.
+
+3. Trajectory clustering.
+The trajectory is clustered into microstates by the k-centers algorithm.
+The RMSD metric is the same for clustering and graph construction.
+
+4. Free energy calculation.
+For each cluster, the free energy is estimated from the energies of its frames.
+
+5. Neighborhood graph.
+The program connects microstates either by an energy difference criterion
+or by an adaptive topological criterion based on effective cluster radii.
+
+6. Rate matrix construction.
+A symmetrized Kramers rate matrix is built from free energies and the neighborhood graph.
+
+7. Basin identification.
+Attractors are found first. Equivalent attractors are merged into plateaus.
+Remaining microstates are assigned by descent to the nearest lower basin.
+
+8. Kinetic metric and ultrametricity.
+For each significant connected component, the program computes physical eigenmodes,
+projects basin vectors onto these modes, computes distances, and classifies all basin triplets.
+
+OUTPUT
+------
+
+The program writes trajectory, topology, and energy files.
+It also prints tables for connected components, basin diagnostics, sensitivity analysis,
+and main analysis results.
+
+Important reported quantities:
+
+f_inter is the fragmentation index of basins across connected components.
+u_nontrivial is the fraction of nontrivial ultrametric triplets, reported in percent.
+u_trivial is the fraction of trivial triplets, reported in percent.
+u_nonultrametric is the fraction of non-ultrametric triplets, reported in percent.
+CV is the coefficient of variation of u_nontrivial, reported in percent.
+
+TROUBLESHOOTING
+---------------
+
+Problem: CUDA initialization fails.
+Solution: the program should switch to CPU automatically. If the problem persists,
+set USE_GPU = False.
+
+Problem: pdbfixer is not found.
+Solution: install pdbfixer with pip.
+
+Problem: simulation stops with NaN errors.
+Solution: reduce MD_TIME_STEP_FS, increase MD_MAX_ROLLBACKS, or lower TEMPERATURE_K.
+
+Problem: too few significant clusters.
+Solution: reduce N_CLUSTERS, reduce MIN_CLUSTER_SIZE, or run a longer trajectory.
+
+Problem: no significant basins.
+Solution: adjust BASIN_EQ_THRESHOLD, MIN_BASIN_SIZE, or MIN_BASINS_PER_COMPONENT.
+For adaptive topology, try a larger NEIGHBOR_ALPHA.
+
+Problem: tables are empty.
+Solution: check that the neighborhood graph has connected components and that enough
+frames and microstates are present. Increase MD_STEPS or reduce MIN_CLUSTER_SIZE.
+
+LICENSE
+-------
+
+Add the license information required for your repository.
+
+CITATION
+--------
+
+If you use this program in research, cite the original method and relevant software packages:
+OpenMM, mdtraj, SciPy, and NumPy.
